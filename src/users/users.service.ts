@@ -62,9 +62,37 @@ export class UsersService {
         HttpStatus.BAD_REQUEST,
       );
     }
-    if (user.individualIdentificationNumber.length !== 12) {
+    function isValidIIN(iin: string): boolean {
+      if (iin.length !== 12) {
+        return false;
+      }
+      const year = iin.substring(0, 2);
+      const month = iin.substring(2, 2);
+      const day = iin.substring(4, 2);
+      const date = new Date(`${year}-${month}-${day}`);
+
+      if (isNaN(date.getTime())) {
+        return false;
+      }
+
+      const regionCode = parseInt(iin.substring(9, 2));
+      if (regionCode < 1 || regionCode > 17) {
+        return false;
+      }
+
+      const controlSum = parseInt(iin.substring(11, 1));
+      let sum = 0;
+      for (let i = 0; i < 11; i++) {
+        sum += parseInt(iin[i]) * ((i % 8) + 2);
+      }
+
+      const remainder = sum % 11;
+      const checkDigit = remainder < 10 ? remainder : 0;
+      return checkDigit === controlSum;
+    }
+    if (!isValidIIN(createUserDto.individualIdentificationNumber)) {
       throw new HttpException(
-        'Длина ИИН не может быть не 12 символов',
+        'ИИН не соответствует формату',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -77,18 +105,15 @@ export class UsersService {
     }
 
     const salt = await bcrypt.genSalt();
-    const hash = await bcrypt.hash(createUserDto.password, salt);
-    user.password = hash;
-    const createdUser = await this.userRepository.create(user);
-    return createdUser;
+    user.password = await bcrypt.hash(createUserDto.password, salt);
+    return await this.userRepository.create(user);
   }
   async updateUserById(id: number, UpdateUserDto: UpdateUserDto) {
     const user = await this.userRepository.findByPk(id);
     if (!user) {
       throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
     }
-    const updateRows = await user.update(UpdateUserDto);
-    return updateRows;
+    return await user.update(UpdateUserDto);
   }
   async authLogin(authLoginDto: AuthLoginDto): Promise<CreateUserDto> {
     const user = await this.userRepository.findOne({
